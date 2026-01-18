@@ -10,15 +10,40 @@ import { Link } from "react-router-dom";
 import api from "@/configs/axios";
 import { toast } from "sonner";
 
-const Sidebar = ({
-  isMenuOpen,
-  project,
-  setProject,
-  isGenerating,
-  setIsGenerating,
-}) => {
+const Sidebar = ({ project, setProject, isGenerating, setIsGenerating }) => {
   const messageRef = useRef(null);
+  const textareaRef = useRef(null);
   const [input, setInput] = useState("");
+
+  const detectPhoneScreen = () => {
+    const viewportWidth = window.visualViewport?.width || window.innerWidth;
+    return viewportWidth <= 1024;
+  };
+
+  const [isPhoneScreen, setIsPhoneScreen] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    return detectPhoneScreen();
+  });
+
+  useEffect(() => {
+    const updatePhoneScreenState = () => {
+      setIsPhoneScreen(detectPhoneScreen());
+    };
+
+    updatePhoneScreenState();
+    window.addEventListener("resize", updatePhoneScreenState);
+    window.visualViewport?.addEventListener("resize", updatePhoneScreenState);
+
+    return () => {
+      window.removeEventListener("resize", updatePhoneScreenState);
+      window.visualViewport?.removeEventListener(
+        "resize",
+        updatePhoneScreenState,
+      );
+    };
+  }, []);
 
   const fetchProject = async () => {
     try {
@@ -51,20 +76,31 @@ const Sidebar = ({
     }
   };
 
-  const handleRevisions = async (e) => {
-    e.preventDefault();
+  const handleRevisions = async () => {
+    if (isGenerating || !input.trim()) {
+      return;
+    }
+
+    if (isPhoneScreen || detectPhoneScreen()) {
+      textareaRef.current?.blur();
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    }
+
     let interval;
     try {
       setIsGenerating(true);
+      const promptToSend = input;
+      setInput("");
       interval = setInterval(() => {
         fetchProject();
       }, 10000);
       const { data } = await api.post(`/api/project/revision/${project.id}`, {
-        message: input,
+        message: promptToSend,
       });
       fetchProject();
       toast.success(data.message);
-      setInput("");
       clearInterval(interval);
       setIsGenerating(false);
     } catch (error) {
@@ -82,9 +118,7 @@ const Sidebar = ({
   }, [project.conversation.length, isGenerating]);
 
   return (
-    <div
-      className={`h-full sm:max-w-sm rounded-[5px] bg-card border-r border-border transition-all shadow-sm ${isMenuOpen ? "max-sm:w-0 overflow-hidden" : "w-full"}`}
-    >
+    <div className="h-full w-full sm:max-w-sm sm:w-full rounded-[5px] bg-card border-r border-border transition-all shadow-sm">
       <div className="flex flex-col h-full bg-background border border-border sm:m-2 sm:rounded-xl shadow-sm">
         {/* Messages container */}
         <div className="flex-1 overflow-y-auto no-scrollbar px-3 flex flex-col gap-4 py-4">
@@ -111,7 +145,7 @@ const Sidebar = ({
                       </div>
                     )}
                     <div
-                      className={`max-w-[80%] p-3 px-4 rounded-xl shadow-sm text-sm mt-5 leading-relaxed border ${isUser ? "bg-primary text-primary-foreground border-primary rounded-tr-none" : "rounded-tl-none bg-muted/50 text-foreground border-border"}`}
+                      className={`max-w-[85%] sm:max-w-[80%] p-3 px-4 rounded-xl shadow-sm text-sm mt-5 leading-relaxed border ${isUser ? "bg-primary text-primary-foreground border-primary rounded-tr-none" : "rounded-tl-none bg-muted/50 text-foreground border-border"}`}
                     >
                       {msg.content}
                     </div>
@@ -127,7 +161,7 @@ const Sidebar = ({
                 return (
                   <div
                     key={ver.id}
-                    className="w-4/5 mx-auto my-2 p-3 rounded-xl bg-card border border-border shadow-sm flex flex-col gap-2"
+                    className="w-full sm:w-4/5 mx-auto my-2 p-3 rounded-xl bg-card border border-border shadow-sm flex flex-col gap-2"
                   >
                     <div className="text-xs font-medium text-foreground">
                       Code updated <br />
@@ -184,25 +218,40 @@ const Sidebar = ({
           <div ref={messageRef} />
         </div>
         {/* Input area */}
-        <form onSubmit={handleRevisions} className="m-3 relative">
+        <div className="m-3 relative">
           <div className="flex items-center gap-2">
             <textarea
+              ref={textareaRef}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey) {
+                const isEnterLikeKey =
+                  e.key === "Enter" || e.code === "Enter" || e.which === 13;
+
+                if (!isEnterLikeKey) {
+                  return;
+                }
+
+                const usePhoneBehavior = isPhoneScreen || detectPhoneScreen();
+
+                if (usePhoneBehavior) {
+                  return;
+                }
+
+                if (!e.shiftKey && !e.ctrlKey) {
                   e.preventDefault();
-                  if (!isGenerating && input.trim()) {
-                    e.currentTarget.form.requestSubmit();
-                  }
+                  handleRevisions();
                 }
               }}
               value={input}
               rows={4}
+              enterKeyHint="enter"
               placeholder="Describe your website or request changes..."
               className="flex-1 p-3 pr-14 rounded-xl resize-none text-sm outline-none border border-border bg-card text-card-foreground placeholder-muted-foreground transition-all focus:border-ring focus:ring-1 focus:ring-ring shadow-sm"
               disabled={isGenerating}
             />
             <button
+              type="button"
+              onClick={handleRevisions}
               disabled={isGenerating || !input.trim()}
               className="absolute bottom-3 right-3 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm transition-all disabled:opacity-60"
             >
@@ -213,7 +262,7 @@ const Sidebar = ({
               )}
             </button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );

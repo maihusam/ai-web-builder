@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowBigDownDashIcon,
+  EyeIcon,
   FullscreenIcon,
   LaptopIcon,
   Loader2Icon,
@@ -9,10 +10,10 @@ import {
   SaveIcon,
   SmartphoneIcon,
   TabletIcon,
-  XIcon,
 } from "lucide-react";
 import Sidebar from "../components/Sidebar";
 import ProjectPreview from "../components/ProjectPreview";
+import LoaderSteps from "../components/LoaderSteps";
 import api from "@/configs/axios";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
@@ -29,10 +30,17 @@ const Projects = () => {
   const [isGenerating, setIsGenerating] = useState(true);
   const [device, setDevice] = useState("desktop");
 
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   const previewRef = useRef(null);
+  const touchStartXRef = useRef(null);
+
+  const dismissKeyboard = () => {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  };
 
   const fetchProject = async () => {
     try {
@@ -92,6 +100,7 @@ const Projects = () => {
 
   useEffect(() => {
     if (project && !project.current_code) {
+      setIsChatOpen(true);
       const intervalId = setInterval(fetchProject, 10000);
       return () => clearInterval(intervalId);
     }
@@ -107,18 +116,18 @@ const Projects = () => {
     );
   }
   return project ? (
-    <div className="flex flex-col h-screen w-full bg-background text-foreground transition-colors duration-300">
+    <div className="flex flex-col h-dvh w-full bg-background text-foreground transition-colors duration-300">
       {/* builder navbar  */}
-      <div className="flex max-sm:flex-col sm:items-center gap-4 px-4 py-2 no-scrollbar border-b border-border shadow-sm">
+      <div className="flex flex-col gap-3 px-3 py-2 no-scrollbar border-b border-border shadow-sm sm:flex-row sm:items-center sm:gap-4 sm:px-4">
         {/* left  */}
-        <div className="flex items-center gap-2 sm:min-w-90 text-nowrap">
+        <div className="flex items-center gap-2 min-w-0 sm:min-w-90 text-nowrap">
           <img
             src={assets.favicon}
             alt="logo"
             className="h-6 cursor-pointer invert dark:invert-0"
             onClick={() => navigate("/")}
           />
-          <div className="max-w-64 sm:max-w-xs">
+          <div className="max-w-[52vw] sm:max-w-xs">
             <p className="text-sm font-medium capitalize truncate">
               {project.name}
             </p>
@@ -126,22 +135,22 @@ const Projects = () => {
               Previewing last saved version
             </p>
           </div>
-          <div className="sm:hidden flex-1 flex justify-end">
-            {isMenuOpen ? (
-              <button
-                onClick={() => setIsMenuOpen(false)}
-                className="p-1 rounded-md text-foreground hover:bg-secondary transition-colors"
-              >
-                <MessageSquareIcon className="size-6 cursor-pointer" />
-              </button>
-            ) : (
-              <button
-                onClick={() => setIsMenuOpen(true)}
-                className="p-1 rounded-md text-foreground hover:bg-secondary transition-colors"
-              >
-                <XIcon className="size-6 cursor-pointer" />
-              </button>
-            )}
+          <div className="ml-auto sm:hidden flex items-center gap-2">
+            <Link
+              target="_blank"
+              to={`/projects/${projectId}/preview`}
+              aria-label="Open full preview"
+              className="size-8 rounded-md border border-border bg-background text-foreground flex items-center justify-center"
+            >
+              <FullscreenIcon className="size-4" />
+            </Link>
+            <button
+              onClick={downloadCode}
+              aria-label="Download code"
+              className="size-8 rounded-md bg-primary text-primary-foreground flex items-center justify-center"
+            >
+              <ArrowBigDownDashIcon className="size-4" />
+            </button>
           </div>
         </div>
         {/* middle  */}
@@ -168,11 +177,11 @@ const Projects = () => {
           </button>
         </div>
         {/* right  */}
-        <div className="flex items-center justify-end gap-3 flex-1 text-xs sm:text-sm font-medium">
+        <div className="hidden sm:flex items-center gap-3 w-full sm:w-auto sm:ml-auto sm:justify-end text-xs sm:text-sm font-medium">
           <button
             onClick={saveProject}
             disabled={isSaving}
-            className="max-sm:hidden bg-secondary hover:bg-secondary/80 text-secondary-foreground px-3.5 py-1.5 flex items-center gap-2 rounded-md transition-colors border border-border shadow-sm disabled:opacity-50"
+            className="bg-secondary hover:bg-secondary/80 text-secondary-foreground px-3.5 py-1.5 flex items-center gap-2 rounded-md transition-colors border border-border shadow-sm disabled:opacity-50"
           >
             {isSaving ? (
               <Loader2Icon className="animate-spin" size={16} />
@@ -184,36 +193,124 @@ const Projects = () => {
           <Link
             target="_blank"
             to={`/projects/${projectId}/preview`}
-            className="flex items-center gap-2 px-4 py-1.5 rounded-md border border-border hover:bg-secondary transition-colors text-foreground"
+            className="flex justify-center items-center gap-2 px-4 py-1.5 rounded-md border border-border hover:bg-secondary transition-colors text-foreground"
           >
             <FullscreenIcon size={16} /> Preview
           </Link>
           <button
             onClick={downloadCode}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-1.5 flex items-center gap-2 rounded-md transition-colors shadow-sm"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-1.5 flex justify-center items-center gap-2 rounded-md transition-colors shadow-sm"
           >
             <ArrowBigDownDashIcon size={16} /> Download
           </button>
         </div>
+        {!isGenerating && (
+          <div className="sm:hidden space-y-1 w-full">
+            <div className="relative grid grid-cols-2 rounded-xl border border-border bg-secondary p-1">
+              <span
+                className={`pointer-events-none absolute top-1 bottom-1 left-1 w-[calc(50%-0.25rem)] rounded-lg border border-border bg-background shadow-sm transition-transform duration-300 ease-out ${isChatOpen ? "translate-x-[calc(100%+0.25rem)]" : "translate-x-0"}`}
+              />
+              <button
+                onClick={() => {
+                  dismissKeyboard();
+                  setIsChatOpen(false);
+                }}
+                className={`relative z-10 flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${!isChatOpen ? "text-foreground" : "text-muted-foreground"}`}
+              >
+                <EyeIcon className="size-3.5" /> Preview
+              </button>
+              <button
+                onClick={() => setIsChatOpen(true)}
+                className={`relative z-10 flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${isChatOpen ? "text-foreground" : "text-muted-foreground"}`}
+              >
+                <MessageSquareIcon className="size-3.5" /> Chat
+              </button>
+            </div>
+            <p className="text-center text-[11px] text-muted-foreground">
+              Swipe left or right to switch
+            </p>
+          </div>
+        )}
       </div>
-      <div className="flex-1 flex overflow-auto bg-muted/30">
-        <Sidebar
-          isMenuOpen={isMenuOpen}
-          project={project}
-          setProject={(p) => setProject(p)}
-          isGenerating={isGenerating}
-          setIsGenerating={setIsGenerating}
-        />
-
-        <div className="flex-1 p-2 pl-0">
-          <ProjectPreview
-            ref={previewRef}
-            project={project}
-            isGenerating={isGenerating}
-            device={device}
-          />
+      {isGenerating ? (
+        <div className="flex-1 p-2 bg-muted/30">
+          <div className="h-full rounded-xl max-sm:rounded-lg overflow-hidden border border-border shadow-sm">
+            <LoaderSteps />
+          </div>
         </div>
-      </div>
+      ) : (
+        <>
+          <div
+            className="sm:hidden relative flex-1 overflow-hidden bg-muted/30"
+            onTouchStart={(e) => {
+              touchStartXRef.current = e.touches[0]?.clientX ?? null;
+            }}
+            onTouchEnd={(e) => {
+              const startX = touchStartXRef.current;
+              touchStartXRef.current = null;
+
+              if (startX === null) {
+                return;
+              }
+
+              const endX = e.changedTouches[0]?.clientX;
+              if (typeof endX !== "number") {
+                return;
+              }
+
+              const deltaX = endX - startX;
+              if (Math.abs(deltaX) < 60) {
+                return;
+              }
+
+              if (deltaX < 0) {
+                setIsChatOpen(true);
+              } else {
+                dismissKeyboard();
+                setIsChatOpen(false);
+              }
+            }}
+          >
+            <div
+              className={`flex h-full w-[200%] transition-transform duration-300 ease-out ${isChatOpen ? "-translate-x-1/2" : "translate-x-0"}`}
+            >
+              <div className="w-1/2 p-2">
+                <ProjectPreview
+                  ref={previewRef}
+                  project={project}
+                  isGenerating={isGenerating}
+                  device={device}
+                />
+              </div>
+              <div className="w-1/2 h-full">
+                <Sidebar
+                  project={project}
+                  setProject={(p) => setProject(p)}
+                  isGenerating={isGenerating}
+                  setIsGenerating={setIsGenerating}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="hidden sm:flex flex-1 overflow-hidden bg-muted/30">
+            <Sidebar
+              project={project}
+              setProject={(p) => setProject(p)}
+              isGenerating={isGenerating}
+              setIsGenerating={setIsGenerating}
+            />
+            <div className="flex-1 p-2 pl-0">
+              <ProjectPreview
+                ref={previewRef}
+                project={project}
+                isGenerating={isGenerating}
+                device={device}
+              />
+            </div>
+          </div>
+        </>
+      )}
     </div>
   ) : (
     <div className="flex items-center justify-center h-screen">

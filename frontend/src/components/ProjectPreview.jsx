@@ -1,25 +1,13 @@
-import {
-  forwardRef,
-  useEffect,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from "react";
-import { iframeScript } from "../assets/assets";
-import EditorPanel from "./EditorPanel";
+import { forwardRef, useImperativeHandle, useRef } from "react";
 import LoaderSteps from "./LoaderSteps";
 
 const ProjectPreview = forwardRef(
-  (
-    { project, isGenerating, device = "desktop", showEditorPanel = true },
-    ref,
-  ) => {
+  ({ project, isGenerating, device = "desktop" }, ref) => {
     const iframeRef = useRef(null);
-    const [selectedElement, setSelectedElement] = useState(null);
 
     const resolutions = {
-      phone: "w-[412px]",
-      tablet: "w-[768px]",
+      phone: "w-[390px] max-w-full",
+      tablet: "w-[768px] max-w-full",
       desktop: "w-full",
     };
 
@@ -27,89 +15,18 @@ const ProjectPreview = forwardRef(
       getCode: () => {
         const doc = iframeRef.current?.contentDocument;
         if (!doc) return undefined;
-
-        // 1. Remove our selection class / attributes / outline from all elements
-        doc
-          .querySelectorAll(".ai-selected-element,[data-ai-selected]")
-          .forEach((el) => {
-            el.classList.remove("ai-selected-element");
-            el.removeAttribute("data-ai-selected");
-            el.style.outline = "";
-          });
-
-        // 2. Remove injected style + script from the document
-        const previewStyle = doc.getElementById("ai-preview-style");
-        if (previewStyle) previewStyle.remove();
-
-        const previewScript = doc.getElementById("ai-preview-script");
-        if (previewScript) previewScript.remove();
-
-        // 3. Serialize clean HTML
-        const html = doc.documentElement.outerHTML;
-        return html;
+        return doc.documentElement.outerHTML;
       },
     }));
 
-    useEffect(() => {
-      const handleMessage = (event) => {
-        if (event.data.type === "ELEMENT_SELECTED") {
-          setSelectedElement(event.data.payload);
-        } else if (event.data.type === "CLEAR_SELECTION") {
-          setSelectedElement(null);
-        }
-      };
-      window.addEventListener("message", handleMessage);
-      return () => window.removeEventListener("message", handleMessage);
-    }, []);
-
-    const handleUpdate = (updates) => {
-      if (iframeRef.current?.contentWindow) {
-        iframeRef.current.contentWindow.postMessage(
-          {
-            type: "UPDATE_ELEMENT",
-            payload: updates,
-          },
-          "*",
-        );
-      }
-    };
-
-    const injectPreview = (html) => {
-      if (!html) return "";
-      if (!showEditorPanel) return html;
-
-      if (html.includes("</body>")) {
-        return html.replace("</body>", iframeScript + "</body>");
-      } else {
-        return html + iframeScript;
-      }
-    };
-
     return (
-      <div className="relative h-full bg-muted/20 flex-1 rounded-xl overflow-hidden max-sm:ml-2 border border-border shadow-sm">
+      <div className="relative h-full bg-muted/20 flex-1 rounded-xl max-sm:rounded-lg overflow-hidden border border-border shadow-sm">
         {project.current_code ? (
-          <>
-            <iframe
-              ref={iframeRef}
-              srcDoc={injectPreview(project.current_code)}
-              className={`h-full bg-white max-sm:w-full ${resolutions[device]} mx-auto transition-all shadow-sm`}
-            />
-            {showEditorPanel && selectedElement && (
-              <EditorPanel
-                selectedElement={selectedElement}
-                onUpdate={handleUpdate}
-                onClose={() => {
-                  setSelectedElement(null);
-                  if (iframeRef.current?.contentWindow) {
-                    iframeRef.current.contentWindow.postMessage(
-                      { type: "CLEAR_SELECTION_REQUEST" },
-                      "*",
-                    );
-                  }
-                }}
-              />
-            )}
-          </>
+          <iframe
+            ref={iframeRef}
+            srcDoc={project.current_code}
+            className={`h-full border-0 bg-white max-sm:w-full ${resolutions[device]} mx-auto transition-all shadow-sm`}
+          />
         ) : (
           isGenerating && <LoaderSteps />
         )}

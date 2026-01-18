@@ -9,16 +9,16 @@ importers:
   .:
     dependencies:
       '@daveyplate/better-auth-ui':
-        specifier: ^3.2.13
-        version: 3.4.0(5a0c41928fc3a78ec8343baf4946e728)
+        specifier: ^3.0.2
+        version: 3.4.0(db4c927ae7bdf85139a64e1ced99e828)
       '@tailwindcss/vite':
-        specifier: ^4.1.17
+        specifier: ^4.0.1
         version: 4.2.2(vite@7.3.2(@types/node@24.12.2)(jiti@2.6.1)(lightningcss@1.32.0))
       axios:
-        specifier: ^1.13.2
+        specifier: ^1.12.0
         version: 1.15.0
       better-auth:
-        specifier: ^1.4.5
+        specifier: ^1.1.2
         version: 1.6.2(@opentelemetry/api@1.9.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       class-variance-authority:
         specifier: ^0.7.1
@@ -27,53 +27,53 @@ importers:
         specifier: ^2.1.1
         version: 2.1.1
       lucide-react:
-        specifier: ^0.555.0
-        version: 0.555.0(react@19.2.5)
+        specifier: ^0.512.0
+        version: 0.512.0(react@19.2.5)
       react:
-        specifier: ^19.2.0
+        specifier: ^19.0.0
         version: 19.2.5
       react-dom:
-        specifier: ^19.2.0
+        specifier: ^19.0.0
         version: 19.2.5(react@19.2.5)
       react-router-dom:
-        specifier: ^7.9.6
+        specifier: ^7.5.0
         version: 7.14.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       sonner:
-        specifier: ^2.0.7
+        specifier: ^2.0.0
         version: 2.0.7(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       tailwind-merge:
-        specifier: ^3.4.0
+        specifier: ^3.1.0
         version: 3.5.0
       tailwindcss:
-        specifier: ^4.1.17
+        specifier: ^4.0.1
         version: 4.2.2
     devDependencies:
       '@eslint/js':
-        specifier: ^9.39.1
+        specifier: ^9.35.0
         version: 9.39.4
       '@vitejs/plugin-react':
-        specifier: ^5.1.1
+        specifier: ^5.0.0
         version: 5.2.0(vite@7.3.2(@types/node@24.12.2)(jiti@2.6.1)(lightningcss@1.32.0))
       eslint:
-        specifier: ^9.39.1
+        specifier: ^9.35.0
         version: 9.39.4(jiti@2.6.1)
       eslint-plugin-react:
-        specifier: ^7.37.5
+        specifier: ^7.37.0
         version: 7.37.5(eslint@9.39.4(jiti@2.6.1))
       eslint-plugin-react-hooks:
-        specifier: ^7.0.1
+        specifier: ^7.0.0
         version: 7.0.1(eslint@9.39.4(jiti@2.6.1))
       eslint-plugin-react-refresh:
-        specifier: ^0.4.24
+        specifier: ^0.4.18
         version: 0.4.26(eslint@9.39.4(jiti@2.6.1))
       globals:
-        specifier: ^16.5.0
+        specifier: ^16.0.0
         version: 16.5.0
       tw-animate-css:
-        specifier: ^1.4.0
+        specifier: ^1.3.0
         version: 1.4.0
       vite:
-        specifier: ^7.2.4
+        specifier: ^7.0.2
         version: 7.3.2(@types/node@24.12.2)(jiti@2.6.1)(lightningcss@1.32.0)
 
 packages:
@@ -2432,8 +2432,8 @@ packages:
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
 
-  lucide-react@0.555.0:
-    resolution: {integrity: sha512-D8FvHUGbxWBRQM90NZeIyhAvkFfsh3u9ekrMvJ30Z6gnpBHS6HC6ldLg7tL45hwiIz/u66eKDtdA23gwwGsAHA==}
+  lucide-react@0.512.0:
+    resolution: {integrity: sha512-VCLpMynBVa+UvEPhs8fXluoa5nh7oPn3JtJ9F29+LmNi6q70IRxx80OBFT5KT6/T5/2hX+XkoWOC8zcRQI7Mzg==}
     peerDependencies:
       react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
@@ -3226,7 +3226,7 @@ snapshots:
       react: 19.2.5
       react-dom: 19.2.5(react@19.2.5)
 
-  '@daveyplate/better-auth-ui@3.4.0(5a0c41928fc3a78ec8343baf4946e728)':
+  '@daveyplate/better-auth-ui@3.4.0(db4c927ae7bdf85139a64e1ced99e828)':
     dependencies:
       '@better-auth/api-key': 1.6.2(@better-auth/core@1.6.2(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.3.6))(jose@6.2.2)(kysely@0.28.15)(nanostores@1.2.0))(@better-auth/utils@0.4.0)(better-auth@1.6.2(@opentelemetry/api@1.9.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))
       '@better-auth/passkey': 1.6.2(@better-auth/core@1.6.2(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.1)(better-call@1.3.5(zod@4.3.6))(jose@6.2.2)(kysely@0.28.15)(nanostores@1.2.0))(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(better-auth@1.6.2(@opentelemetry/api@1.9.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(better-call@1.3.5(zod@4.3.6))(nanostores@1.2.0)
@@ -3263,7 +3263,7 @@ snapshots:
       class-variance-authority: 0.7.1
       clsx: 2.1.1
       input-otp: 1.4.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      lucide-react: 0.555.0(react@19.2.5)
+      lucide-react: 0.512.0(react@19.2.5)
       react: 19.2.5
       react-dom: 19.2.5(react@19.2.5)
       react-google-recaptcha: 3.1.0(react@19.2.5)
@@ -5364,7 +5364,7 @@ snapshots:
     dependencies:
       yallist: 3.1.1
 
-  lucide-react@0.555.0(react@19.2.5):
+  lucide-react@0.512.0(react@19.2.5):
     dependencies:
       react: 19.2.5
 

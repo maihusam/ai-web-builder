@@ -12,6 +12,11 @@ const Home = () => {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const isPhoneScreen = () => {
+    const viewportWidth = window.visualViewport?.width || window.innerWidth;
+    return viewportWidth <= 768;
+  };
+
   const onSubmitHandler = async (e) => {
     e.preventDefault();
     try {
@@ -51,6 +56,14 @@ const Home = () => {
         <textarea
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
+            if (e.key !== "Enter") {
+              return;
+            }
+
+            if (isPhoneScreen()) {
+              return;
+            }
+
             if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey) {
               e.preventDefault();
               if (input.trim()) {
