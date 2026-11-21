@@ -4,6 +4,7 @@ import Projects from "./pages/Projects";
 import MyProjects from "./pages/MyProjects";
 import Preview from "./pages/Preview";
 import View from "./pages/View";
+import Community from "./pages/Community";
 import Navbar from "./components/Navbar";
 import { Toaster } from "sonner";
 import AuthPage from "./pages/auth/AuthPage";
@@ -25,6 +26,7 @@ const App = () => {
 
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/community" element={<Community />} />
         <Route path="/projects" element={<MyProjects />} />
         <Route path="/projects/:id" element={<Projects />} />
         <Route path="/projects/:id/preview" element={<Preview />} />

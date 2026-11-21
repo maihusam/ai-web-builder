@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import Project from "../models/Project.js";
+import User from "../models/User.js";
 import Conversation from "../models/Conversation.js";
 import Version from "../models/Version.js";
 import openai from "../configs/openai.js";
@@ -389,6 +390,50 @@ export const setPublished = async (req, res) => {
     await Project.updateOne({ _id: projectId }, { $set: { isPublished: published } });
 
     res.json({ isPublished: published });
+  } catch (error) {
+    console.log(error.code || error.message);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const COMMUNITY_PAGE_SIZE = 12;
+
+// Public: gallery of every published site, newest first. Only exposes the
+// site's name, date, creator's first name and its page code (for the thumbnail).
+// Never the prompt, email or user id.
+export const getCommunityProjects = async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const filter = { isPublished: true, current_code: { $ne: null } };
+
+    const [projects, total] = await Promise.all([
+      Project.find(filter)
+        .sort({ updatedAt: -1 })
+        .skip((page - 1) * COMMUNITY_PAGE_SIZE)
+        .limit(COMMUNITY_PAGE_SIZE)
+        .select("name current_code userId createdAt"),
+      Project.countDocuments(filter),
+    ]);
+
+    const ownerIds = [...new Set(projects.map((p) => p.userId))].filter((id) =>
+      mongoose.isValidObjectId(id),
+    );
+    const owners = await User.find({ _id: { $in: ownerIds } }).select("name");
+    const firstNames = new Map(
+      owners.map((u) => [u.id, u.name.trim().split(/\s+/)[0]]),
+    );
+
+    res.json({
+      projects: projects.map((p) => ({
+        id: p.id,
+        name: p.name,
+        current_code: p.current_code,
+        createdAt: p.createdAt,
+        creator: firstNames.get(p.userId) || "Anonymous",
+      })),
+      page,
+      totalPages: Math.max(1, Math.ceil(total / COMMUNITY_PAGE_SIZE)),
+    });
   } catch (error) {
     console.log(error.code || error.message);
     res.status(500).json({ message: error.message });

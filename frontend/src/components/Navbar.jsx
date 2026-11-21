@@ -46,6 +46,9 @@ const Navbar = () => {
           <Link to="/projects" className="hover:text-primary transition-colors">
             My Projects
           </Link>
+          <Link to="/community" className="hover:text-primary transition-colors">
+            Community
+          </Link>
         </div>
 
         <div className="flex items-center gap-3">
@@ -158,6 +161,13 @@ const Navbar = () => {
             className="hover:text-primary font-medium"
           >
             My Projects
+          </Link>
+          <Link
+            to="/community"
+            onClick={() => setMenuOpen(false)}
+            className="hover:text-primary font-medium"
+          >
+            Community
           </Link>
 
           <button
