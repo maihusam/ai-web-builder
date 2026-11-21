@@ -1,57 +1,74 @@
 import { useEffect, useState } from "react";
 import { Loader2Icon, PlusIcon, TrashIcon } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import Footer from "../components/Footer";
+import { useLocation, useNavigate } from "react-router-dom";
+import ConfirmDialog from "../components/ConfirmDialog";
 import api from "@/configs/axios";
 import { toast } from "sonner";
-import { authClient } from "@/lib/auth-client";
+import { useAuth } from "@/context/auth-context";
+import { getErrorMessage } from "@/lib/constants";
 
 const MyProjects = () => {
-  const { data: session, isPending } = authClient.useSession();
+  const { user, isPending } = useAuth();
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState([]);
   const navigate = useNavigate();
+  const location = useLocation();
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchProjects = async () => {
     try {
       const { data } = await api.get("/api/user/projects");
       setProjects(data.projects);
-      setLoading(false);
     } catch (error) {
-      console.log(error);
-      toast.error(error?.response?.data?.message || error.message);
+      toast.error(getErrorMessage(error));
+    } finally {
+      setLoading(false);
     }
   };
 
-  const deleteProject = async (projectId) => {
+  const confirmDelete = async () => {
+    setDeleting(true);
     try {
-      const confirm = window.confirm(
-        "Are you sure you want to delete this project?",
-      );
-      if (!confirm) return;
-      const { data } = await api.delete(`/api/project/${projectId}`);
+      const { data } = await api.delete(`/api/project/${deleteTarget.id}`);
       toast.success(data.message);
-      fetchProjects();
+      setProjects((list) => list.filter((p) => p.id !== deleteTarget.id));
     } catch (error) {
-      console.log(error);
-      toast.error(error?.response?.data?.message || error.message);
+      toast.error(getErrorMessage(error));
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
     }
   };
 
   useEffect(() => {
-    if (session?.user && !isPending) {
+    if (isPending) return;
+    if (user) {
       fetchProjects();
-    } else if (!isPending && !session?.user) {
-      navigate("/");
-      toast("Please login to view your projects");
+    } else {
+      navigate("/auth/signin", {
+        replace: true,
+        state: { from: location.pathname },
+      });
+      toast("Please sign in to view your projects");
     }
-  }, [session?.user]);
+  }, [user, isPending, navigate, location.pathname]);
   return (
     <>
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete this project?"
+        description={`"${deleteTarget?.name}" and its chat history and versions will be permanently deleted. This can't be undone.`}
+        confirmLabel="Delete"
+        destructive
+        loading={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
       <div className="px-4 md:px-16 lg:px-24 xl:px-32">
         {loading ? (
           <div className="flex items-center justify-center h-[80vh]">
-            <Loader2Icon className="size-7 animate-spin text-indigo-200" />
+            <Loader2Icon className="size-7 animate-spin text-primary" />
           </div>
         ) : projects.length > 0 ? (
           <div className="py-10 min-h-[80vh]">
@@ -85,8 +102,28 @@ const MyProjects = () => {
                       />
                     ) : (
                       <div className="flex items-center justify-center h-full text-muted-foreground">
-                        <p>No Preview</p>
+                        <p>
+                          {project.status === "generating"
+                            ? "Building…"
+                            : "No preview (build failed)"}
+                        </p>
                       </div>
+                    )}
+                    {project.status === "generating" && (
+                      <span className="absolute left-2 top-2 flex items-center gap-1.5 rounded-full bg-background/90 px-2 py-0.5 text-xs font-medium border border-border">
+                        <Loader2Icon className="size-3 animate-spin" />
+                        {project.current_code ? "Updating" : "Building"}
+                      </span>
+                    )}
+                    {!project.current_code && project.status !== "generating" && (
+                      <span className="absolute left-2 top-2 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive border border-destructive/30">
+                        Failed
+                      </span>
+                    )}
+                    {project.isPublished && (
+                      <span className="absolute left-2 bottom-2 rounded-full bg-background/90 px-2 py-0.5 text-xs font-medium border border-border">
+                        Published
+                      </span>
                     )}
                   </div>
                   {/* Content */}
@@ -132,10 +169,11 @@ const MyProjects = () => {
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
                     <button
-                      className="absolute top-3 right-3 scale-0 group-hover:scale-100 bg-destructive/10 p-1.5 rounded-md text-destructive hover:bg-destructive/20 cursor-pointer shadow-sm transition-all"
+                      aria-label="Delete project"
+                      className="absolute top-3 right-3 sm:scale-0 sm:group-hover:scale-100 sm:focus-visible:scale-100 bg-destructive/10 p-1.5 rounded-md text-destructive hover:bg-destructive/20 cursor-pointer shadow-sm transition-all"
                       onClick={(e) => {
                         e.stopPropagation();
-                        deleteProject(project.id);
+                        setDeleteTarget(project);
                       }}
                     >
                       <TrashIcon size={18} />
@@ -159,7 +197,6 @@ const MyProjects = () => {
           </div>
         )}
       </div>
-      <Footer />
     </>
   );
 };

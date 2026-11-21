@@ -1,21 +1,20 @@
-import { auth } from "../lib/auth.js";
-import { fromNodeHeaders } from "better-auth/node";
+import jwt from "jsonwebtoken";
+import { ENV } from "../env.js";
+import { COOKIE_NAME } from "../lib/token.js";
 
-export const protect = async (req, res, next) => {
+export const protect = (req, res, next) => {
   try {
-    const session = await auth.api.getSession({
-      headers: fromNodeHeaders(req.headers),
-    });
+    const token = req.cookies?.[COOKIE_NAME];
 
-    if (!session || !session?.user) {
+    if (!token) {
       return res.status(401).json({ message: "Unauthorized user" });
     }
 
-    req.userId = session.user.id;
+    const payload = jwt.verify(token, ENV.JWT_SECRET);
+    req.userId = payload.id;
 
     next();
-  } catch (error) {
-    console.log(error);
-    res.status(401).json({ message: error.code || error.message });
+  } catch {
+    res.status(401).json({ message: "Invalid or expired token" });
   }
 };

@@ -4,10 +4,10 @@ import { Loader2Icon } from "lucide-react";
 import ProjectPreview from "../components/ProjectPreview";
 import api from "@/configs/axios";
 import { toast } from "sonner";
-import { authClient } from "@/lib/auth-client";
+import { useAuth } from "@/context/auth-context";
 
 const Preview = () => {
-  const { data: session, isPending } = authClient.useSession();
+  const { user, isPending } = useAuth();
   const { id: projectId, versionId } = useParams();
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(true);
@@ -31,10 +31,10 @@ const Preview = () => {
   };
 
   useEffect(() => {
-    if (!isPending && session?.user) {
+    if (!isPending && user) {
       fetchCode();
     }
-  }, [session?.user]);
+  }, [user]);
 
   if (loading) {
     return (

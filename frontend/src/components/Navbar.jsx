@@ -1,36 +1,31 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { assets } from "@/assets/assets";
-import { Link, useNavigate } from "react-router-dom";
-import { authClient } from "@/lib/auth-client";
-import { UserButton } from "@daveyplate/better-auth-ui";
-import api from "@/configs/axios";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "@/context/auth-context";
 import { toast } from "sonner";
+import { getErrorMessage } from "@/lib/constants";
 import { SunIcon, MoonIcon } from "lucide-react";
 import { useTheme } from "./theme-provider";
 
 const Navbar = () => {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const navigate = useNavigate();
-  const [credits, setCredits] = useState(0);
   const { theme, setTheme } = useTheme();
+  const location = useLocation();
 
-  const { data: session } = authClient.useSession();
+  // Credits live in the auth context so every page keeps them up to date
+  const { user, isPending, credits, logout } = useAuth();
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
-  const getCredits = async () => {
+  const handleLogout = async () => {
     try {
-      const { data } = await api.get("/api/user/credits");
-      setCredits(data.credits);
+      await logout();
+      setUserMenuOpen(false);
+      navigate("/");
     } catch (error) {
-      toast.error(error?.response?.data?.message || error.message);
-      console.log(error);
+      toast.error(getErrorMessage(error));
     }
   };
-
-  useEffect(() => {
-    if (session?.user) {
-      getCredits();
-    }
-  }, [session?.user]);
 
   return (
     <>
@@ -61,19 +56,65 @@ const Navbar = () => {
             {theme === "dark" ? <SunIcon size={20} /> : <MoonIcon size={20} />}
           </button>
 
-          {!session?.user ? (
+          {isPending ? (
+            // Reserve the space so the bar doesn't jump once we know who's signed in
+            <div
+              aria-hidden="true"
+              className="h-9 w-28 rounded-md bg-secondary animate-pulse"
+            />
+          ) : !user ? (
             <button
-              onClick={() => navigate("/auth/signin")}
+              onClick={() =>
+                navigate("/auth/signin", { state: { from: location.pathname } })
+              }
               className="px-5 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors rounded-md shadow-sm"
             >
               Get started
             </button>
           ) : (
             <>
-              <button className="bg-secondary px-4 py-1.5 text-xs sm:text-sm border border-border text-secondary-foreground rounded-full font-medium">
-                Credits: <span className="text-primary ml-1">{credits}</span>
-              </button>
-              <UserButton size="icon" />
+              <span
+                title="Each website or change costs 5 credits"
+                className={`px-4 py-1.5 text-xs sm:text-sm border rounded-full font-medium ${credits !== null && credits < 5 ? "border-destructive/40 bg-destructive/10 text-destructive" : "border-border bg-secondary text-secondary-foreground"}`}
+              >
+                Credits:{" "}
+                <span
+                  className={
+                    credits !== null && credits < 5 ? "" : "text-primary ml-1"
+                  }
+                >
+                  {credits ?? "–"}
+                </span>
+              </span>
+              <div className="relative">
+                <button
+                  onClick={() => setUserMenuOpen((open) => !open)}
+                  aria-label="Account menu"
+                  className="size-9 rounded-full bg-primary text-primary-foreground font-medium flex items-center justify-center uppercase"
+                >
+                  {user.name?.charAt(0)}
+                </button>
+                {userMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-52 bg-card border border-border rounded-md shadow-md p-1 text-sm z-50">
+                    <p className="px-3 py-2 text-muted-foreground truncate">
+                      {user.email}
+                    </p>
+                    <Link
+                      to="/account/settings"
+                      onClick={() => setUserMenuOpen(false)}
+                      className="block px-3 py-2 rounded hover:bg-secondary"
+                    >
+                      Settings
+                    </Link>
+                    <button
+                      onClick={handleLogout}
+                      className="w-full text-left px-3 py-2 rounded hover:bg-secondary"
+                    >
+                      Log out
+                    </button>
+                  </div>
+                )}
+              </div>
             </>
           )}
 

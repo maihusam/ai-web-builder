@@ -1,9 +1,12 @@
 import express from "express";
 import cors from "cors";
-import { toNodeHandler } from "better-auth/node";
-import { auth } from "./lib/auth.js";
+import cookieParser from "cookie-parser";
+import "./lib/db.js";
+import authRouter from "./routes/authRoutes.js";
 import userRouter from "./routes/userRoutes.js";
 import projectRouter from "./routes/projectRoutes.js";
+import Project from "./models/Project.js";
+import { refundCredits } from "./lib/generate.js";
 
 const app = express();
 
@@ -15,21 +18,42 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-
-app.all("/api/auth/{*any}", toNodeHandler(auth));
-
+app.use(cookieParser());
 app.use(express.json({ limit: "50mb" }));
 
 app.get("/", (req, res) => {
   res.send("Server is Live!");
 });
+app.use("/api/auth", authRouter);
 app.use("/api/user", userRouter);
 app.use("/api/project", projectRouter);
 
-export default app;
+// A restart kills any AI job that was running. Without this, those projects
+// would stay on "generating" forever and their credits would be lost.
+const recoverStuckProjects = async () => {
+  try {
+    const stuck = await Project.find({ status: "generating" });
+    for (const project of stuck) {
+      await refundCredits(project.userId);
+      const failedFirstBuild = !project.current_code;
+      await Project.updateOne(
+        { _id: project.id },
+        {
+          $set: {
+            status: failedFirstBuild ? "failed" : "ready",
+            stage: "",
+            error: failedFirstBuild ? "The server restarted while building" : "",
+          },
+        },
+      );
+    }
+    if (stuck.length) console.log(`Recovered ${stuck.length} interrupted project(s)`);
+  } catch (error) {
+    console.log("Could not recover interrupted projects:", error.message);
+  }
+};
+recoverStuckProjects();
 
-if (!process.env.VERCEL) {
-  app.listen(port, () => {
-    console.log(`Server is running at http://localhost:${port}`);
-  });
-}
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
+});

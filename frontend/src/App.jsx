@@ -9,10 +9,12 @@ import { Toaster } from "sonner";
 import AuthPage from "./pages/auth/AuthPage";
 import Settings from "./pages/Settings";
 import Loading from "./pages/Loading";
+import Footer from "./components/Footer";
 
 const App = () => {
   const { pathname } = useLocation();
 
+  // The builder, previews and public sites use the full screen
   const hideNavbar =
     pathname.startsWith("/projects/") && pathname !== "/projects";
 
@@ -33,6 +35,7 @@ const App = () => {
         <Route path="/settings/account" element={<Settings />} />
         <Route path="/loading" element={<Loading />} />
       </Routes>
+      {!hideNavbar && <Footer />}
     </div>
   );
 };

@@ -1,6 +1,25 @@
-import prisma from "../lib/prisma.js";
+import mongoose from "mongoose";
+import User from "../models/User.js";
+import Project from "../models/Project.js";
+import Conversation from "../models/Conversation.js";
+import Version from "../models/Version.js";
 import openai from "../configs/openai.js";
 import { ENV } from "../env.js";
+import {
+  MAX_PROMPT_LENGTH,
+  chargeCredits,
+  cleanCode,
+  friendlyError,
+  refundCredits,
+} from "../lib/generate.js";
+
+const findOwnedProject = (projectId, userId) =>
+  mongoose.isValidObjectId(projectId)
+    ? Project.findOne({ _id: projectId, userId })
+    : null;
+
+const setStage = (projectId, stage) =>
+  Project.updateOne({ _id: projectId }, { $set: { stage } });
 
 export const getUserCredits = async (req, res) => {
   try {
@@ -9,9 +28,7 @@ export const getUserCredits = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
+    const user = await User.findById(userId);
 
     res.json({ credits: user?.credits });
   } catch (error) {
@@ -20,71 +37,14 @@ export const getUserCredits = async (req, res) => {
   }
 };
 
-export const createUserProject = async (req, res) => {
-  const userId = req.userId;
-  let creditsDeducted = false;
+// Runs the whole first-build job in the background. The project's `status`
+// and `stage` fields are updated as it goes, so the frontend can show real
+// progress. If anything fails, the credits are refunded and the project is
+// marked "failed" so the user sees an error and can retry.
+const runGeneration = async (project, userId, prompt) => {
+  const projectId = project.id;
   try {
-    const { initial_prompt } = req.body;
-
-    if (!userId) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (user && user.credits < 5) {
-      return res
-        .status(403)
-        .json({ message: "add credits to create more projects" });
-    }
-
-    if (!initial_prompt || typeof initial_prompt !== "string") {
-      return res.status(400).json({ message: "initial_prompt is required" });
-    }
-
-    const trimmedPrompt = initial_prompt.trim();
-
-    if (!trimmedPrompt) {
-      return res.status(400).json({ message: "initial_prompt is required" });
-    }
-
-    const project = await prisma.websiteProject.create({
-      data: {
-        name:
-          trimmedPrompt.length > 50
-            ? trimmedPrompt.substring(0, 47) + "..."
-            : trimmedPrompt,
-        initial_prompt: trimmedPrompt,
-        userId,
-      },
-    });
-
-    await prisma.user.update({
-      where: { id: userId },
-      data: { totalCreation: { increment: 1 } },
-    });
-
-    await prisma.conversation.create({
-      data: {
-        role: "user",
-        content: trimmedPrompt,
-        projectId: project.id,
-      },
-    });
-
-    await prisma.user.update({
-      where: { id: userId },
-      data: { credits: { decrement: 5 } },
-    });
-    creditsDeducted = true;
-
-    res.json({ projectId: project.id });
-
-    if (!ENV.AI_MODEL) {
-      return res.status(500).json({ message: "AI_MODEL is not configured" });
-    }
+    await setStage(projectId, "enhancing");
 
     const promptEnhanceResponse = await openai.chat.completions.create({
       model: ENV.AI_MODEL,
@@ -104,32 +64,24 @@ export const createUserProject = async (req, res) => {
 
                     Return ONLY the enhanced prompt, nothing else. Make it detailed but concise (2-3 paragraphs max).`,
         },
-        {
-          role: "user",
-          content: initial_prompt,
-        },
+        { role: "user", content: prompt },
       ],
     });
 
     const enhancedPrompt =
-      promptEnhanceResponse?.choices?.[0]?.message?.content?.trim() ||
-      trimmedPrompt;
+      promptEnhanceResponse?.choices?.[0]?.message?.content?.trim() || prompt;
 
-    await prisma.conversation.create({
-      data: {
-        role: "assistant",
-        content: `I've enhanced your prompt to: "${enhancedPrompt}"`,
-        projectId: project.id,
-      },
+    await Conversation.create({
+      role: "assistant",
+      content: `I've enhanced your prompt to: "${enhancedPrompt}"`,
+      projectId,
     });
-
-    await prisma.conversation.create({
-      data: {
-        role: "assistant",
-        content: "now generating your website...",
-        projectId: project.id,
-      },
+    await Conversation.create({
+      role: "assistant",
+      content: "Now generating your website...",
+      projectId,
     });
+    await setStage(projectId, "generating");
 
     const codeGenerationResponse = await openai.chat.completions.create({
       model: ENV.AI_MODEL,
@@ -140,7 +92,7 @@ export const createUserProject = async (req, res) => {
                      You are an expert web developer. Create a complete, production-ready, single-page website based on this request: "${enhancedPrompt}"
 
                     CRITICAL REQUIREMENTS:
-                    - You MUST output valid HTML ONLY. 
+                    - You MUST output valid HTML ONLY.
                     - Use Tailwind CSS for ALL styling
                     - Include this EXACT script in the <head>: <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
                     - Use Tailwind utility classes extensively for styling, animations, and responsiveness
@@ -162,79 +114,219 @@ export const createUserProject = async (req, res) => {
 
                     The HTML should be complete and ready to render as-is with Tailwind CSS.`,
         },
-        {
-          role: "user",
-          content: enhancedPrompt || "",
-        },
+        { role: "user", content: enhancedPrompt },
       ],
     });
 
-    const code =
-      codeGenerationResponse?.choices?.[0]?.message?.content?.trim() || "";
+    const code = codeGenerationResponse?.choices?.[0]?.message?.content || "";
+    if (!code.trim()) {
+      throw new Error("The AI returned an empty response");
+    }
 
-    if (!code) {
-      await prisma.conversation.create({
-        data: {
-          role: "assistant",
-          content: "Unable to generate the code, please try again",
-          projectId: project.id,
+    await setStage(projectId, "saving");
+    const finalCode = cleanCode(code);
+
+    const version = await Version.create({
+      code: finalCode,
+      description: "Initial version",
+      projectId,
+    });
+
+    await Conversation.create({
+      role: "assistant",
+      content:
+        "I've created your website! You can now preview it and request any changes.",
+      projectId,
+    });
+
+    await Project.updateOne(
+      { _id: projectId },
+      {
+        $set: {
+          current_code: finalCode,
+          current_version_index: version.id,
+          status: "ready",
+          stage: "",
+          error: "",
         },
-      });
-      await prisma.user.update({
-        where: { id: userId },
-        data: { credits: { increment: 5 } },
-      });
-      creditsDeducted = false;
-      return;
-    }
-
-    const version = await prisma.version.create({
-      data: {
-        code: code
-          .replace(/```[a-z]*\n?/gi, "")
-          .replace(/```$/g, "")
-          .trim(),
-        description: "Initial version",
-        projectId: project.id,
       },
-    });
-
-    await prisma.conversation.create({
-      data: {
-        role: "assistant",
-        content:
-          "I've created your website! You can now preview it and request any changes.",
-        projectId: project.id,
-      },
-    });
-
-    await prisma.websiteProject.update({
-      where: { id: project.id },
-      data: {
-        current_code: code
-          .replace(/```[a-z]*\n?/gi, "")
-          .replace(/```$/g, "")
-          .trim(),
-        current_version_index: version.id,
-      },
-    });
+    );
   } catch (error) {
-    if (creditsDeducted && userId) {
-      try {
-        await prisma.user.update({
-          where: { id: userId },
-          data: { credits: { increment: 5 } },
-        });
-      } catch (refundError) {
-        console.log(refundError.code || refundError.message);
-      }
+    console.log(error.code || error.message);
+    const message = friendlyError(error);
+    try {
+      await refundCredits(userId);
+      await Conversation.create({
+        role: "assistant",
+        content: `Generation failed: ${message}. Your credits were refunded, you can retry.`,
+        projectId,
+      });
+      await Project.updateOne(
+        { _id: projectId },
+        { $set: { status: "failed", stage: "", error: message } },
+      );
+    } catch (cleanupError) {
+      console.log(cleanupError.code || cleanupError.message);
+    }
+  }
+};
+
+export const createUserProject = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { initial_prompt } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
     }
 
-    console.log(error.code || error.message);
+    // A valid token can outlive a deleted account
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
 
+    if (!ENV.AI_MODEL) {
+      return res.status(500).json({ message: "AI_MODEL is not configured" });
+    }
+
+    if (typeof initial_prompt !== "string" || !initial_prompt.trim()) {
+      return res.status(400).json({ message: "initial_prompt is required" });
+    }
+
+    const trimmedPrompt = initial_prompt.trim();
+
+    if (trimmedPrompt.length > MAX_PROMPT_LENGTH) {
+      return res.status(400).json({
+        message: `Please keep your description under ${MAX_PROMPT_LENGTH} characters`,
+      });
+    }
+
+    const charged = await chargeCredits(userId);
+    if (!charged) {
+      return res
+        .status(403)
+        .json({ message: "Not enough credits. Creating a website costs 5 credits." });
+    }
+
+    let project;
+    try {
+      project = await Project.create({
+        name:
+          trimmedPrompt.length > 50
+            ? trimmedPrompt.substring(0, 47) + "..."
+            : trimmedPrompt,
+        initial_prompt: trimmedPrompt,
+        userId,
+        status: "generating",
+        stage: "enhancing",
+      });
+
+      await User.updateOne({ _id: userId }, { $inc: { totalCreation: 1 } });
+      await Conversation.create({
+        role: "user",
+        content: trimmedPrompt,
+        projectId: project.id,
+      });
+    } catch (error) {
+      await refundCredits(userId);
+      throw error;
+    }
+
+    // Reply right away; the AI work continues in the background
+    res.json({ projectId: project.id, credits: charged.credits });
+
+    runGeneration(project, userId, trimmedPrompt);
+  } catch (error) {
+    console.log(error.code || error.message);
     if (!res.headersSent) {
       res.status(500).json({ message: error.message });
     }
+  }
+};
+
+// Lets the user re-run a build that failed, without retyping the prompt
+export const retryUserProject = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { projectId } = req.params;
+
+    if (!ENV.AI_MODEL) {
+      return res.status(500).json({ message: "AI_MODEL is not configured" });
+    }
+
+    const charged = await chargeCredits(userId);
+    if (!charged) {
+      return res
+        .status(403)
+        .json({ message: "Not enough credits. Retrying costs 5 credits." });
+    }
+
+    // Only a project that is not already running (and has no code yet) can retry
+    const project = mongoose.isValidObjectId(projectId)
+      ? await Project.findOneAndUpdate(
+          {
+            _id: projectId,
+            userId,
+            status: { $ne: "generating" },
+            current_code: null,
+          },
+          { $set: { status: "generating", stage: "enhancing", error: "" } },
+          { new: true },
+        )
+      : null;
+
+    if (!project) {
+      await refundCredits(userId);
+      return res
+        .status(409)
+        .json({ message: "This project can't be retried right now" });
+    }
+
+    await Conversation.create({
+      role: "assistant",
+      content: "Retrying your website...",
+      projectId,
+    });
+
+    res.json({ credits: charged.credits });
+
+    runGeneration(project, userId, project.initial_prompt);
+  } catch (error) {
+    console.log(error.code || error.message);
+    if (!res.headersSent) {
+      res.status(500).json({ message: error.message });
+    }
+  }
+};
+
+// Small, cheap payload the frontend polls while the AI is working
+export const getProjectStatus = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { projectId } = req.params;
+
+    const project = await findOwnedProject(projectId, userId);
+    if (!project) {
+      return res.status(404).json({ message: "Project not found" });
+    }
+
+    const [conversationCount, versionCount] = await Promise.all([
+      Conversation.countDocuments({ projectId }),
+      Version.countDocuments({ projectId }),
+    ]);
+
+    res.json({
+      status: project.status,
+      stage: project.stage,
+      error: project.error,
+      hasCode: Boolean(project.current_code),
+      conversationCount,
+      versionCount,
+    });
+  } catch (error) {
+    console.log(error.code || error.message);
+    res.status(500).json({ message: error.message });
   }
 };
 
@@ -247,17 +339,21 @@ export const getUserProject = async (req, res) => {
 
     const { projectId } = req.params;
 
-    const project = await prisma.websiteProject.findUnique({
-      where: { id: projectId, userId },
-      include: {
-        conversation: {
-          orderBy: { timestamp: "asc" },
-        },
-        versions: { orderBy: { timestamp: "asc" } },
-      },
-    });
+    const project = await findOwnedProject(projectId, userId);
 
-    res.json({ project });
+    if (!project) {
+      return res.json({ project: null });
+    }
+
+    const conversation = await Conversation.find({ projectId }).sort({
+      timestamp: 1,
+    });
+    // The chat only needs version ids and dates, not every version's full HTML
+    const versions = await Version.find({ projectId })
+      .select("-code")
+      .sort({ timestamp: 1 });
+
+    res.json({ project: { ...project.toJSON(), conversation, versions } });
   } catch (error) {
     console.log(error.code || error.message);
     res.status(500).json({ message: error.message });
@@ -271,10 +367,7 @@ export const getUserProjects = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const projects = await prisma.websiteProject.findMany({
-      where: { userId },
-      orderBy: { updatedAt: "desc" },
-    });
+    const projects = await Project.find({ userId }).sort({ updatedAt: -1 });
 
     res.json({ projects });
   } catch (error) {
