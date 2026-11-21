@@ -52,8 +52,15 @@ const recoverStuckProjects = async () => {
     console.log("Could not recover interrupted projects:", error.message);
   }
 };
-recoverStuckProjects();
 
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
-});
+// On Vercel every instance is short-lived and several can run at once, so a
+// "generating" project may be live on another instance. Only recover locally.
+if (!process.env.VERCEL) {
+  recoverStuckProjects();
+
+  app.listen(port, () => {
+    console.log(`Server is running on port ${port}`);
+  });
+}
+
+export default app;
