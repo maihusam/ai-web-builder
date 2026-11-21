@@ -2,7 +2,7 @@ import { ENV } from "../env.js";
 
 // Sends an email through Resend when configured. Otherwise the message is
 // printed to the server console so password reset still works in development.
-export const sendMail = async ({ to, subject, text }) => {
+export const sendMail = async ({ to, subject, text, html }) => {
   if (!ENV.RESEND_API_KEY || !ENV.MAIL_FROM) {
     console.log(`[mail not configured] To: ${to}\n${subject}\n${text}`);
     return;
@@ -14,7 +14,7 @@ export const sendMail = async ({ to, subject, text }) => {
       Authorization: `Bearer ${ENV.RESEND_API_KEY}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ from: ENV.MAIL_FROM, to, subject, text }),
+    body: JSON.stringify({ from: ENV.MAIL_FROM, to, subject, text, html }),
   });
 
   if (!response.ok) {

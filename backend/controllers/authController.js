@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import User from "../models/User.js";
 import { ENV } from "../env.js";
 import { sendMail } from "../lib/mailer.js";
+import { otpEmail, resetPasswordEmail } from "../lib/emailTemplates.js";
 import { signToken, cookieOptions, COOKIE_NAME } from "../lib/token.js";
 
 const publicUser = (user) => ({
@@ -93,11 +94,7 @@ const sendOtp = async (user, { force = true } = {}) => {
     },
   );
 
-  await sendMail({
-    to: user.email,
-    subject: "Your verification code",
-    text: `Hi ${user.name},\n\nYour verification code is ${otp}\n\nIt expires in 10 minutes. If you didn't create an account, you can ignore this email.`,
-  });
+  await sendMail({ to: user.email, ...otpEmail({ name: user.name, otp }) });
   return true;
 };
 
@@ -240,8 +237,10 @@ export const forgotPassword = async (req, res) => {
 
     await sendMail({
       to: user.email,
-      subject: "Reset your password",
-      text: `Hi ${user.name},\n\nUse this link to choose a new password (valid for 1 hour):\n${ENV.CLIENT_URL}/auth/reset?token=${token}\n\nIf you didn't ask for this, you can ignore this email.`,
+      ...resetPasswordEmail({
+        name: user.name,
+        url: `${ENV.CLIENT_URL}/auth/reset?token=${token}`,
+      }),
     });
 
     res.json(genericReply);
