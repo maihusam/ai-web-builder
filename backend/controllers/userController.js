@@ -272,7 +272,7 @@ export const retryUserProject = async (req, res) => {
             current_code: null,
           },
           { $set: { status: "generating", stage: "enhancing", error: "" } },
-          { new: true },
+          { returnDocument: "after" },
         )
       : null;
 

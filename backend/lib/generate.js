@@ -10,7 +10,7 @@ export const chargeCredits = (userId) =>
   User.findOneAndUpdate(
     { _id: userId, credits: { $gte: CREDIT_COST } },
     { $inc: { credits: -CREDIT_COST } },
-    { new: true },
+    { returnDocument: "after" },
   );
 
 export const refundCredits = (userId) =>
