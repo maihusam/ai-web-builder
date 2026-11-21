@@ -56,7 +56,8 @@ export default function AuthPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { user, isPending, login, register, resetPassword } = useAuth();
+  const { user, isPending, login, register, verifyEmail, resendOtp, resetPassword } =
+    useAuth();
 
   // signin (default) | signup | forgot | reset
   const mode = ["signup", "forgot", "reset"].includes(action) ? action : "signin";
@@ -74,9 +75,102 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState("");
   const [forgotSent, setForgotSent] = useState(false);
+  // Email address waiting for its verification code (null = not verifying)
+  const [verifyingEmail, setVerifyingEmail] = useState(null);
+  const [otp, setOtp] = useState("");
+  const [otpNotice, setOtpNotice] = useState("");
 
   if (!isPending && user && !loading) {
     return <Navigate to={from} replace />;
+  }
+
+  const onVerify = async (e) => {
+    e.preventDefault();
+    setFormError("");
+    if (!/^\d{6}$/.test(otp)) {
+      setFormError("Enter the 6-digit code from your email");
+      return;
+    }
+    setLoading(true);
+    try {
+      await verifyEmail(verifyingEmail, otp);
+      navigate(from, { replace: true });
+    } catch (error) {
+      setFormError(getErrorMessage(error));
+      setLoading(false);
+    }
+  };
+
+  const onResend = async () => {
+    setFormError("");
+    setOtpNotice("");
+    try {
+      await resendOtp(verifyingEmail);
+      setOtpNotice("A new code is on its way.");
+    } catch (error) {
+      setFormError(getErrorMessage(error));
+    }
+  };
+
+  if (verifyingEmail) {
+    return (
+      <main className="p-6 flex flex-col justify-center items-center min-h-[80vh]">
+        <form
+          onSubmit={onVerify}
+          noValidate
+          className="w-full max-w-sm bg-card border border-border shadow-sm rounded-xl p-6 flex flex-col gap-4"
+        >
+          <div>
+            <h1 className="text-2xl font-semibold text-foreground">Check your email</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              We sent a 6-digit code to <strong>{verifyingEmail}</strong>. It
+              expires in 10 minutes.
+            </p>
+          </div>
+          {formError && (
+            <p
+              role="alert"
+              className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
+              {formError}
+            </p>
+          )}
+          {otpNotice && (
+            <p role="status" className="text-sm text-muted-foreground">
+              {otpNotice}
+            </p>
+          )}
+          <Field id="otp" label="Verification code">
+            <input
+              id="otp"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              placeholder="123456"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+              className={`${inputClass(false)} tracking-[0.4em] text-center`}
+            />
+          </Field>
+          <button
+            type="submit"
+            disabled={loading}
+            className="flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 font-medium transition-colors disabled:opacity-60"
+          >
+            {loading && <Loader2Icon className="animate-spin size-4" />}
+            Verify email
+          </button>
+          <button
+            type="button"
+            onClick={onResend}
+            className="text-sm text-primary hover:underline"
+          >
+            Resend code
+          </button>
+        </form>
+      </main>
+    );
   }
 
   const needsName = isSignUp;
@@ -123,12 +217,22 @@ export default function AuthPage() {
       if (mode === "reset") {
         await resetPassword(resetToken, password);
       } else if (isSignUp) {
-        await register(name.trim(), email.trim(), password);
+        const result = await register(name.trim(), email.trim(), password);
+        setVerifyingEmail(result.email);
+        setOtp("");
+        setLoading(false);
+        return;
       } else {
         await login(email.trim(), password);
       }
       navigate(mode === "reset" ? "/" : from, { replace: true });
     } catch (error) {
+      if (error?.response?.data?.code === "EMAIL_NOT_VERIFIED") {
+        setVerifyingEmail(error.response.data.email);
+        setOtp("");
+        setLoading(false);
+        return;
+      }
       setFormError(getErrorMessage(error));
       setLoading(false);
     }

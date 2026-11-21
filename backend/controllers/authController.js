@@ -29,18 +29,143 @@ export const register = async (req, res) => {
       });
     }
 
-    if (await User.findOne({ email: email.trim().toLowerCase() })) {
+    const normalized = email.trim().toLowerCase();
+    const existing = await User.findOne({ email: normalized });
+    if (existing && existing.emailVerified) {
       return res.status(409).json({ message: "Email already registered" });
     }
 
     const hashed = await bcrypt.hash(password, 10);
-    const user = await User.create({ name, email, password: hashed });
+    let user;
+    if (existing) {
+      // Never-verified signup: let the real owner start over with new details
+      existing.name = name;
+      existing.password = hashed;
+      user = await existing.save();
+    } else {
+      user = await User.create({
+        name,
+        email: normalized,
+        password: hashed,
+        emailVerified: false,
+      });
+    }
+
+    await sendOtp(user);
+
+    // No login cookie yet: the account is usable only after the code is verified
+    res.status(201).json({ needsVerification: true, email: user.email });
+  } catch (error) {
+    console.log(error.code || error.message);
+    res.status(500).json({ message: "Couldn't send the verification email, please try again" });
+  }
+};
+
+const OTP_TTL_MS = 10 * 60 * 1000;
+const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
+
+const hashOtp = (email, otp) =>
+  crypto.createHash("sha256").update(`${email}:${otp}`).digest("hex");
+
+// Generates a 6-digit code, stores its hash and emails it. Returns false if a
+// code was sent less than a minute ago.
+const sendOtp = async (user, { force = true } = {}) => {
+  const fresh = await User.findById(user.id).select("+otpSentAt");
+  if (
+    !force &&
+    fresh?.otpSentAt &&
+    Date.now() - fresh.otpSentAt.getTime() < OTP_RESEND_COOLDOWN_MS
+  ) {
+    return false;
+  }
+
+  const otp = String(crypto.randomInt(100000, 1000000));
+  await User.updateOne(
+    { _id: user.id },
+    {
+      $set: {
+        otpHash: hashOtp(user.email, otp),
+        otpExpires: new Date(Date.now() + OTP_TTL_MS),
+        otpAttempts: 0,
+        otpSentAt: new Date(),
+      },
+    },
+  );
+
+  await sendMail({
+    to: user.email,
+    subject: "Your verification code",
+    text: `Hi ${user.name},\n\nYour verification code is ${otp}\n\nIt expires in 10 minutes. If you didn't create an account, you can ignore this email.`,
+  });
+  return true;
+};
+
+export const verifyEmail = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (typeof email !== "string" || typeof otp !== "string") {
+      return res.status(400).json({ message: "Email and code are required" });
+    }
+
+    const normalized = email.trim().toLowerCase();
+    const user = await User.findOne({ email: normalized }).select(
+      "+otpHash +otpExpires +otpAttempts",
+    );
+
+    const invalid = { message: "That code is invalid or has expired" };
+    if (!user || user.emailVerified || !user.otpHash || user.otpExpires < new Date()) {
+      return res.status(400).json(invalid);
+    }
+    if (user.otpAttempts >= OTP_MAX_ATTEMPTS) {
+      return res
+        .status(429)
+        .json({ message: "Too many attempts. Please request a new code." });
+    }
+
+    if (hashOtp(normalized, otp.trim()) !== user.otpHash) {
+      await User.updateOne({ _id: user.id }, { $inc: { otpAttempts: 1 } });
+      return res.status(400).json(invalid);
+    }
+
+    await User.updateOne(
+      { _id: user.id },
+      {
+        $set: { emailVerified: true },
+        $unset: { otpHash: "", otpExpires: "", otpAttempts: "", otpSentAt: "" },
+      },
+    );
 
     res.cookie(COOKIE_NAME, signToken(user.id), cookieOptions);
-    res.status(201).json({ user: publicUser(user) });
+    res.json({ user: publicUser(user) });
   } catch (error) {
     console.log(error.code || error.message);
     res.status(500).json({ message: error.message });
+  }
+};
+
+export const resendOtp = async (req, res) => {
+  const genericReply = { message: "If that account needs verifying, a new code is on its way." };
+  try {
+    const { email } = req.body;
+    if (typeof email !== "string" || !email.trim()) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    const user = await User.findOne({ email: email.trim().toLowerCase() });
+    if (user && !user.emailVerified) {
+      const sent = await sendOtp(user, { force: false });
+      if (!sent) {
+        return res
+          .status(429)
+          .json({ message: "Please wait a minute before requesting another code" });
+      }
+    }
+    res.json(genericReply);
+  } catch (error) {
+    console.log(error.code || error.message);
+    res.status(500).json({ message: "Couldn't send the verification email, please try again" });
   }
 };
 
@@ -61,6 +186,16 @@ export const login = async (req, res) => {
     // can't tell which emails are registered
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({ message: "Invalid email or password" });
+    }
+
+    if (!user.emailVerified) {
+      // Password was right, so it's safe to tell them to verify (and email a code)
+      await sendOtp(user, { force: false });
+      return res.status(403).json({
+        code: "EMAIL_NOT_VERIFIED",
+        email: user.email,
+        message: "Please verify your email. We've sent you a code.",
+      });
     }
 
     res.cookie(COOKIE_NAME, signToken(user.id), cookieOptions);

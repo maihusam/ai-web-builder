@@ -14,6 +14,14 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true, select: false },
     credits: { type: Number, default: 20 },
     totalCreation: { type: Number, default: 0 },
+    // Defaults to true so accounts created before email verification existed
+    // keep working; register() explicitly sets it to false for new sign-ups.
+    emailVerified: { type: Boolean, default: true },
+    // Email verification OTP: only a hash is stored
+    otpHash: { type: String, select: false },
+    otpExpires: { type: Date, select: false },
+    otpAttempts: { type: Number, default: 0, select: false },
+    otpSentAt: { type: Date, select: false },
     // Password reset: we only store a hash of the emailed token
     resetTokenHash: { type: String, select: false },
     resetTokenExpires: { type: Date, select: false },

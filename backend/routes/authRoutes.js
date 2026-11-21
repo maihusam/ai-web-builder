@@ -6,6 +6,8 @@ import {
   me,
   forgotPassword,
   resetPassword,
+  verifyEmail,
+  resendOtp,
 } from "../controllers/authController.js";
 import { protect } from "../middlewares/auth.js";
 
@@ -13,6 +15,8 @@ const authRouter = express.Router();
 
 authRouter.post("/register", register);
 authRouter.post("/login", login);
+authRouter.post("/verify-email", verifyEmail);
+authRouter.post("/resend-otp", resendOtp);
 authRouter.post("/logout", logout);
 authRouter.post("/forgot", forgotPassword);
 authRouter.post("/reset", resetPassword);

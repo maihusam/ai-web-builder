@@ -50,10 +50,22 @@ export function AuthProvider({ children }) {
         email,
         password,
       });
+      return data; // { needsVerification, email }: the user logs in after verifying
+    },
+    [],
+  );
+
+  const verifyEmail = useCallback(
+    async (email, otp) => {
+      const { data } = await api.post("/api/auth/verify-email", { email, otp });
       applyUser(data.user);
     },
     [applyUser],
   );
+
+  const resendOtp = useCallback(async (email) => {
+    await api.post("/api/auth/resend-otp", { email });
+  }, []);
 
   const resetPassword = useCallback(
     async (token, password) => {
@@ -88,10 +100,12 @@ export function AuthProvider({ children }) {
       isPending,
       login,
       register,
+      verifyEmail,
+      resendOtp,
       resetPassword,
       logout,
     }),
-    [user, credits, refreshCredits, isPending, login, register, resetPassword, logout],
+    [user, credits, refreshCredits, isPending, login, register, verifyEmail, resendOtp, resetPassword, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
